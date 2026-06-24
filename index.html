@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lốc Xoáy Trái Tim ❤</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;}
+  canvas{display:block;width:100vw;height:100vh;}
+  #txt{position:fixed;left:50%;top:6%;transform:translateX(-50%);
+    color:#ffe3ef;font-family:"Segoe UI",cursive,sans-serif;
+    font-size:clamp(16px,3.2vw,30px);letter-spacing:3px;font-weight:600;
+    text-shadow:0 0 10px #ff5b8d,0 0 22px #ff2d6b,0 0 40px #ff2d6b;
+    pointer-events:none;user-select:none;white-space:nowrap;
+    animation:breathe 2.6s ease-in-out infinite;}
+  @keyframes breathe{
+    0%,100%{opacity:.78;transform:translateX(-50%) scale(1);}
+    50%{opacity:1;transform:translateX(-50%) scale(1.05);}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d',{alpha:false});
+
+let W,H,cx,heartCy,discX,discY,discR,HSP,S,DPR;
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=canvas.width=Math.floor(innerWidth*DPR);
+  H=canvas.height=Math.floor(innerHeight*DPR);
+  canvas.style.width=innerWidth+'px';
+  canvas.style.height=innerHeight+'px';
+  const m=Math.min(W,H);
+  cx=W/2;
+  heartCy=H*0.33;        // tâm trái tim
+  HSP=m*0.21;            // 1 đơn vị tim -> px
+  discX=cx;
+  discY=H*0.80;          // tâm đĩa xoáy
+  discR=m*0.54;          // bán kính đĩa (rất rộng)
+  S=m/40;                // đơn vị cỡ hạt
+}
+resize(); addEventListener('resize',resize);
+
+/* ---- sprite glow (vẽ sẵn) ---- */
+const cache={};
+function glow(hue,sat,light){
+  const k=hue+'_'+sat+'_'+light; if(cache[k])return cache[k];
+  const s=48,cv=document.createElement('canvas');cv.width=cv.height=s;
+  const g=cv.getContext('2d');
+  const grd=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  grd.addColorStop(0,`hsla(${hue},${sat}%,${light}%,1)`);
+  grd.addColorStop(0.3,`hsla(${hue},${sat}%,${light}%,0.55)`);
+  grd.addColorStop(0.65,`hsla(${hue},${sat}%,${light}%,0.12)`);
+  grd.addColorStop(1,`hsla(${hue},${sat}%,${light}%,0)`);
+  g.fillStyle=grd;g.fillRect(0,0,s,s);
+  return cache[k]=cv;
+}
+const spPink =glow(335,90,62);
+const spCore =glow(345,100,86);
+const spCyan =glow(184,95,62);
+const spBlue =glow(202,90,50);
+const spWhite=glow(330,35,92);
+
+/* ---- nền sao ---- */
+const STN=150, STARS=[];
+for(let i=0;i<STN;i++){
+  STARS.push({x:Math.random(),y:Math.random()*0.9,r:0.4+Math.random()*1.5,
+    tw:Math.random()*6.28,sp:0.5+Math.random()*1.8,hue:Math.random()<0.5?330:200});
+}
+
+/* ====== TRÁI TIM (công thức ẩn, fill đều) ======
+   inside: (x^2 + y^2 - 1)^3 - x^2*y^3 <= 0   (y hướng lên)        */
+function heartF(x,y){ const a=x*x+y*y-1; return a*a*a - x*x*y*y*y; }
+const HN=2600, HP=[];
+while(HP.length<HN){
+  const x=(Math.random()*2-1)*1.35;
+  const y=(Math.random()*2-1)*1.35+0.15;
+  const f=heartF(x,y);
+  if(f>0) continue;                       // ngoài hình tim -> bỏ
+  const depth=Math.min(1,-f);             // 1 ở giữa .. 0 ở viền
+  HP.push({
+    hx:x, hy:y,
+    hz:(Math.random()-0.5)*1.4*(0.3+0.7*depth),   // dày ở giữa -> khối 3D
+    edge:1-depth,                          // 1 ở viền
+    size:0.6+Math.random()*0.9,
+    tw:Math.random()*6.28
+  });
+}
+
+/* ====== VÒI RỒNG: hạt xoáy bay LÊN từ đĩa vào trái tim ====== */
+const RN=520, RISE=[];
+function spawnRise(r){
+  r.ang=Math.random()*Math.PI*2;
+  r.base=0.15+Math.random()*0.85;      // bán kính gốc (0..1) ở đáy
+  r.swirl=2.2+Math.random()*2.2;
+  r.p=0;                                // tiến trình 0 (đáy) -> 1 (tim)
+  r.rise=0.30+Math.random()*0.32;
+  r.size=0.5+Math.random()*0.9;
+  r.wob=Math.random()*6.28;
+  r.tw=Math.random()*6.28;
+}
+for(let i=0;i<RN;i++){ const r={}; spawnRise(r); r.p=Math.random(); RISE.push(r); }
+
+/* ====== ĐĨA XOÁY NẰM NGANG (dẹt & rộng) ====== */
+const VN=2800, VP=[];
+const FLAT=0.16;                 // rất dẹt
+function makeV(){
+  const r=0.12+0.88*Math.sqrt(Math.random());
+  return {
+    ang:Math.random()*Math.PI*2,
+    r, h:Math.random()*0.02,
+    swirl:(0.45+(1-r)*1.3),
+    size:0.55+Math.random()*1.0,
+    bob:Math.random()*6.28,
+    tw:Math.random()*6.28
+  };
+}
+for(let i=0;i<VN;i++) VP.push(makeV());
+
+let time=0,last=0;
+const F=3.0;                     // tiêu cự phối cảnh trái tim
+
+function loop(ts){
+  if(!last)last=ts;
+  let dt=(ts-last)/1000; last=ts; if(dt>0.05)dt=0.05;
+  time+=dt;
+
+  const beat=1+0.028*Math.sin(time*2.2);
+  const A=0.32*Math.sin(time*0.45);        // xoay 3D nhẹ
+  const cosA=Math.cos(A), sinA=Math.sin(A);
+
+  ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation='lighter';
+
+  /* ---- sao nền ---- */
+  for(let i=0;i<STN;i++){
+    const st=STARS[i];
+    const tw=0.45+0.55*Math.sin(time*st.sp+st.tw);
+    const sz=st.r*DPR*(1.1+tw);
+    ctx.globalAlpha=tw*0.5;
+    ctx.drawImage(st.hue===330?spPink:spCyan, st.x*W-sz, st.y*H-sz, sz*2, sz*2);
+  }
+
+  /* ---- ĐĨA XOÁY: nửa sau trước, nửa trước sau ---- */
+  for(let pass=0;pass<2;pass++){
+    for(let i=0;i<VN;i++){
+      const v=VP[i];
+      if(pass===0) v.ang+=v.swirl*dt;
+      const dz=Math.sin(v.ang);
+      const front=dz>0;
+      if((pass===0)===front) continue;
+      const dx=Math.cos(v.ang)*v.r;
+      const depth=0.5+dz*0.5;
+      const X=discX + dx*discR;
+      const Y=discY + dz*discR*FLAT - v.h*discR - Math.sin(time*1.5+v.bob)*2;
+      const twk=0.7+0.3*Math.sin(time*4+v.tw);
+      const sz=v.size*S*0.34*(0.6+depth*0.6)*twk;
+      const fade=(1-Math.pow(v.r,4)*0.55)*Math.min(1,v.r*3);  // mờ rìa & giữa rỗng
+      ctx.globalAlpha=(0.10+depth*0.5)*twk*fade;
+      ctx.drawImage(front?spCyan:spBlue, X-sz,Y-sz, sz*2,sz*2);
+    }
+  }
+
+  /* ---- VÒI RỒNG đi lên ---- */
+  const heartBottomY=heartCy + 1.1*HSP*beat;          // đáy trái tim
+  for(let i=0;i<RN;i++){
+    const r=RISE[i];
+    r.p+=r.rise*dt*(0.5+r.p*0.9);                      // càng lên càng nhanh
+    if(r.p>=1){ spawnRise(r); continue; }
+    r.ang+=r.swirl*(1+r.p*1.8)*dt;                     // xoáy nhanh dần khi lên
+    const funnel=1-r.p*0.8;                            // hẹp dần về phía tim
+    const rad=(discR*0.34*r.base*funnel)+Math.sin(time*2+r.wob)*4*funnel;
+    const tilt=FLAT*(1-r.p);                           // phối cảnh đáy, mất dần
+    const X=cx+Math.cos(r.ang)*rad;
+    const Y=discY - r.p*(discY-heartBottomY) + Math.sin(r.ang)*rad*tilt
+            - Math.cos(time*3+r.wob)*3;
+    const twk=0.7+0.3*Math.sin(time*5+r.tw);
+    const sz=r.size*S*0.34*twk*(0.7+(1-r.p)*0.5);
+    const a=Math.min(1,r.p*4)*(1-Math.max(0,(r.p-0.82)/0.18));  // fade vào/ra
+    ctx.globalAlpha=a*twk*0.85;
+    const sprite=r.p<0.45?spCyan:(r.p<0.72?spWhite:spPink);     // cyan -> sáng -> hồng
+    ctx.drawImage(sprite, X-sz,Y-sz, sz*2,sz*2);
+  }
+
+  /* ---- TRÁI TIM 3D ---- */
+  for(let i=0;i<HN;i++){
+    const p=HP[i];
+    const rx=p.hx*cosA + p.hz*sinA;
+    const rz=-p.hx*sinA + p.hz*cosA;
+    const persp=F/(F+rz);
+    const X=cx + rx*beat*HSP*persp;
+    const Y=heartCy - p.hy*beat*HSP*persp;
+    const twk=0.85+0.15*Math.sin(time*2.5+p.tw);
+    const depth=Math.max(0,Math.min(1,(persp-0.9)/0.22));
+    const sz=p.size*S*0.46*persp*twk;
+    ctx.globalAlpha=(0.4+0.5*depth)*(0.75+p.edge*0.25)*twk;
+    ctx.drawImage(spPink, X-sz,Y-sz, sz*2,sz*2);
+    if(p.edge>0.78){
+      const cr=sz*0.5; ctx.globalAlpha=twk*0.4;
+      ctx.drawImage(spCore, X-cr,Y-cr, cr*2,cr*2);
+    }
+  }
+
+  ctx.globalAlpha=1;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+const u=new URLSearchParams(location.search);
+if(u.has('text')) document.getElementById('txt').textContent=u.get('text');
+</script>
+</body>
+</html>
